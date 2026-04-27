@@ -1059,3 +1059,25 @@ extern "C" double putchard(double X) {
 
 - 만약 함수를 다시 작성해 테스트하고 싶다면, `def foo2(x) ...` 처럼 다른 이름을 부여하거나 JIT REPL 세션을 재시작하여 깨끗한 상태에서 진행해야 합니다. 
 - 이 점을 유의하시고 기존 튜토리얼 문서에서 중복 정의를 테스팅하는 부분은 건너뛰시면(Skip) 됩니다!
+
+## `clang++: error: linker command failed with exit code 1` 링커 오류 해결
+
+컴파일을 시도할 때 다음과 같은 링커 오류가 발생하며 실패하는 경우가 있습니다.
+
+**잘못된 명령어 예시:**
+```bash
+clang++ -g my_llvm.cpp `llvm-config --cxxflags --ldflags --system-libs --libs -rdynamic core orcjit native` -O3 -o out/my_llvm
+```
+
+**원인:**
+명령어를 자세히 보면 `-rdynamic` 플래그가 백틱(`` ` ``) 안쪽에 들어가 있습니다. 
+`-rdynamic`은 `clang++`(또는 `g++`) 링커에게 심볼을 전역으로 노출하라고 지시하는 컴파일러 옵션입니다. 하지만 이를 백틱 안에 넣게 되면 `llvm-config`의 인자로 전달되어 버립니다. 
+`llvm-config`는 `-rdynamic`이라는 컴포넌트(라이브러리)를 알지 못하므로 에러를 뱉거나 빈 문자열을 반환하게 되고, 결국 `clang++`에는 LLVM 라이브러리 링크 정보가 전달되지 않아 "심볼을 찾을 수 없다(undefined reference)"는 링커 오류가 발생하게 됩니다.
+
+**해결 방법:**
+`-rdynamic` 플래그를 백틱 바깥으로 꺼내어 `clang++`의 인자로 직접 전달해야 합니다.
+
+**올바른 컴파일 명령어:**
+```bash
+clang++ -g my_llvm.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -rdynamic -O3 -o out/my_llvm
+```
