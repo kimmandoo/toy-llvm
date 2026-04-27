@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "llvm-config": true,
+        "/^clang\\+\\+ -g my_llvm\\.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -rdynamic -O3 -o out/my_llvm$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

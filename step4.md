@@ -1006,3 +1006,56 @@ extern "C" double putchard(double X) {
 | `return 0`                  | double 반환 함수에서 0을 반환, 암시적으로 0.0 변환 |
 
 ---
+## LLVM 18 컴파일 오류 해결 방법
+
+이 튜토리얼 코드를 최신 버전(LLVM 18 등)에서 컴파일할 때 발생하는 오류들을 해결하려면 다음 사항들을 수정해야 합니다. 
+
+1. **`include/KaleidoscopeJIT.h` 수정**:
+   - 변경 전: `#include "llvm/ExecutionEngine/Orc/SelfExecutorProcessControl.h"`
+   - 변경 후: `#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"`
+     (최신 버전에서 `SelfExecutorProcessControl`가 `ExecutorProcessControl.h`로 통합되었습니다.)
+
+   - `RTDyldObjectLinkingLayer` 파라미터 람다 함수 서명 변경:
+     ```cpp
+     // 변경 전
+     ObjectLayer(*this->ES,
+                 [](const MemoryBuffer &) {
+                   return std::make_unique<SectionMemoryManager>();
+                 }),
+     
+     // 변경 후
+     ObjectLayer(*this->ES,
+                 []() {
+                   return std::make_unique<SectionMemoryManager>();
+                 }),
+     ```
+
+2. **`my_llvm.cpp` JIT 심볼 포인터 반환 함수 수정**:
+   최신 `ExecutorSymbolDef` 클래스에서는 직접 `toPtr`을 호출할 수 없고, 주소 객체를 가져온 뒤 호출해야 합니다.
+   ```cpp
+   // 변경 전
+   double (*FP)() = ExprSymbol.toPtr<double (*)()>();
+   
+   // 변경 후
+   double (*FP)() = ExprSymbol.getAddress().toPtr<double (*)()>();
+   ```
+
+3. **컴파일 명령어**:
+   터미널에서 아래의 컴파일 명령어로 실행하면 정상적으로 빌드됩니다.
+   ```bash
+   clang++ -g my_llvm.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -rdynamic -O3 -o out/my_llvm
+   ```
+
+## LLVM 9 이상에서의 심볼 중복(함수 재정의) 문제 대응
+
+![alt text](img/2.png)
+
+튜토리얼을 따라 REPL에서 동일한 이름의 함수(예: `def foo(x) x+1;` 등)를 여러 번 정의하며 테스트하게 되는데, LLVM 9부터 도입된 OrcV2 JIT API에서는 동적 링커 및 정적 링커의 규칙을 엄격하게 따르기 때문에 **중복된 심볼 정의(Duplicate symbols)를 허용하지 않습니다.**
+
+과거 ORC JIT 버전에서는 이전 모듈에 대한 참조를 덮어쓰는 방식으로 쉽게 재정의가 가능했지만, 현재는 고유한 심볼 이름을 키로 사용하여 동시 컴파일을 지원하도록 설계되었기 때문에 의도치 않은 충돌을 막기 위해 원천 차단된 상태입니다.
+
+### 어떻게 테스트해야 할까?
+이후 튜토리얼 챕터에서 불필요하게 된 이전 모듈을 JIT에서 안전하게 제거하고 메모리를 반환하는 `ResourceTracker` 방식 등을 다루게 될 때까지는, **한 번 정의한 함수 이름은 REPL 세션 내에서 다시 정의(Redefine)하지 않도록** 해야 합니다.
+
+- 만약 함수를 다시 작성해 테스트하고 싶다면, `def foo2(x) ...` 처럼 다른 이름을 부여하거나 JIT REPL 세션을 재시작하여 깨끗한 상태에서 진행해야 합니다. 
+- 이 점을 유의하시고 기존 튜토리얼 문서에서 중복 정의를 테스팅하는 부분은 건너뛰시면(Skip) 됩니다!
