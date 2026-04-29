@@ -1,3 +1,4 @@
 my_llvm.dSYM
 out
 *.out
+**/build/
